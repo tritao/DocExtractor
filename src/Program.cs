@@ -80,6 +80,9 @@ namespace DocExtractor
 
         private static void BuildDocumentation(FileInfo config)
         {
+            var configDir = Path.GetDirectoryName(config.FullName);
+            Directory.SetCurrentDirectory(configDir);
+
             var configurationJSON = File.ReadAllText(config.FullName);
             var configuration = JsonSerializer.Deserialize<Configuration>(configurationJSON, SerializationOptions);
             BuildDocumentation(configuration);
