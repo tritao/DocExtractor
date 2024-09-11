@@ -11,7 +11,7 @@ namespace DocExtractor
         public OutputFormat OutputFormat { get; set; } = OutputFormat.HTML;
         public string OutputFolder { get; set; } = null;
         public string PathPrefix { get; set; } = ".";
-        public Dictionary<string, string> NamespaceSummaries { get; set; } = null;
+        public Dictionary<string, string> NamespaceSummaries { get; set; } = new Dictionary<string, string>();
 
         /// <summary>
         /// Gets or sets the indent level of the generated summary file.
