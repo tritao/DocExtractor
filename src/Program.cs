@@ -611,11 +611,18 @@ namespace DocExtractor
 
             var undocumentedElementNameList = new List<string>();
 
-            try
+            if (string.IsNullOrEmpty(doc) == false)
             {
-                xml = XElement.Parse(doc);
+                try
+                {
+                    xml = XElement.Parse(doc);
+                }
+                catch
+                {
+                    xml = new XElement("member", new XAttribute("name", documentationID));
+                }
             }
-            catch
+            else
             {
                 xml = new XElement("member", new XAttribute("name", documentationID));
             }
