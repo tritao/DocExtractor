@@ -264,6 +264,11 @@ namespace DocExtractor
                             Console.WriteLine(path);
                         }
 
+                        if (configuration.OutputJsonIndex)
+                        {
+                            JSONIndex.Generate(configuration, outputs);
+                        }
+
                         break;
                     }
             }
