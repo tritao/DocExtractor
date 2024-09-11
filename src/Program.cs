@@ -143,6 +143,9 @@ namespace DocExtractor
                 assemblySymbols[project.AssemblyName] = thisProjectSymbols;
             }
 
+            if (!Directory.Exists(configuration.OutputFolder))
+                Directory.CreateDirectory(configuration.OutputFolder);
+
             switch (configuration.OutputFormat)
             {
                 case OutputFormat.HTML:
