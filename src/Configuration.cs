@@ -19,6 +19,9 @@ namespace DocExtractor
         public bool StripExtensionFromLinks { get; set; }
         public Dictionary<string, string> NamespaceSummaries { get; set; } = new Dictionary<string, string>();
 
+        public bool OutputJsonIndex { get; set; } = false;
+
+
         /// <summary>
         /// Gets or sets the indent level of the generated summary file.
         /// </summary>
