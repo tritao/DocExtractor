@@ -298,7 +298,7 @@ namespace DocExtractor
                 var children = symbolDict
                     .Values
                     .Where(s => s.ContainerID == symbol.DocumentationID)
-                    .GroupBy(s => (HTMLRenderer.GetTypeName(s, plural: true)))  ;
+                    .GroupBy(s => HTMLRenderer.GetTypeName(s, plural: true));
 
                 if (children.Any())
                 {

@@ -11,7 +11,9 @@ using System.Xml.XPath;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
-// This class is based on code derived from the Omnisharp-Rosyln codebase.
+#nullable enable
+
+// This class is based on code derived from the Omnisharp-Roslyn codebase.
 namespace DocExtractor
 {
     public static class DocumentationCommentExtractor
@@ -19,7 +21,7 @@ namespace DocExtractor
         public static IEnumerable<ISymbol> GetAllSymbols(SemanticModel model, SyntaxNode root)
         {
             var noDuplicates = new HashSet<ISymbol>();
-            
+
             foreach (var node in root.DescendantNodesAndSelf())
             {
                 switch (node.Kind())
@@ -28,7 +30,7 @@ namespace DocExtractor
                     // case SyntaxKind.InvocationExpression:
                     //     break;
                     default:
-                        ISymbol symbol = model.GetDeclaredSymbol(node);
+                        ISymbol? symbol = model.GetDeclaredSymbol(node);
 
                         if (symbol != null)
                         {
@@ -40,9 +42,11 @@ namespace DocExtractor
             }
         }
 
-        public static string GetDocumentationComment(ISymbol symbol, HashSet<ISymbol> visitedSymbols = null, Compilation compilation = null, System.Globalization.CultureInfo preferredCulture = null, bool expandIncludes = false, bool expandInheritdoc = false, bool useAutomaticInheritdoc = false, System.Threading.CancellationToken cancellationToken = default)
+        public static string GetDocumentationComment(ISymbol symbol, HashSet<ISymbol> visitedSymbols,
+            Compilation compilation, System.Globalization.CultureInfo? preferredCulture = null,
+            bool expandIncludes = false, bool expandInheritdoc = false, bool useAutomaticInheritdoc = false,
+            CancellationToken cancellationToken = default)
         {
-
             var xmlText = symbol.GetDocumentationCommentXml(preferredCulture, expandIncludes, cancellationToken);
             if (expandInheritdoc)
             {
@@ -80,7 +84,6 @@ namespace DocExtractor
 
             }
             return string.IsNullOrEmpty(xmlText) ? string.Empty : xmlText;
-
         }
 
         private static XNode[] RewriteMany(ISymbol symbol, HashSet<ISymbol>? visitedSymbols, Compilation compilation, XNode[] nodes, CancellationToken cancellationToken)
@@ -222,7 +225,8 @@ namespace DocExtractor
             return false;
         }
 
-        private static XNode[]? RewriteInheritdocElement(ISymbol memberSymbol, HashSet<ISymbol>? visitedSymbols, Compilation compilation, XElement element, CancellationToken cancellationToken)
+        private static XNode[]? RewriteInheritdocElement(ISymbol memberSymbol, HashSet<ISymbol>? visitedSymbols,
+            Compilation compilation, XElement element, CancellationToken cancellationToken)
         {
             var crefAttribute = element.Attribute(XName.Get(DocumentationCommentXmlNames.CrefAttributeName));
             var pathAttribute = element.Attribute(XName.Get(DocumentationCommentXmlNames.PathAttributeName));
@@ -247,8 +251,8 @@ namespace DocExtractor
             else
             {
                 var crefValue = crefAttribute.Value;
-                
-                symbol = FindSymbolForDeclarationId(crefValue, compilation as CSharpCompilation);
+
+                symbol = FindSymbolForDeclarationId(crefValue, (CSharpCompilation)compilation);
                 if (symbol is null)
                 {
                     return null;
@@ -264,7 +268,9 @@ namespace DocExtractor
 
             try
             {
-                var inheritedDocumentation = GetDocumentationComment(symbol, visitedSymbols, compilation, preferredCulture: null, expandIncludes: true, expandInheritdoc: true, useAutomaticInheritdoc: false, cancellationToken);
+                var inheritedDocumentation = GetDocumentationComment(symbol, visitedSymbols, compilation,
+                    preferredCulture: null, expandIncludes: true, expandInheritdoc: true,
+                    useAutomaticInheritdoc: false, cancellationToken);
                 if (inheritedDocumentation == string.Empty)
                 {
                     return Array.Empty<XNode>();
@@ -272,7 +278,8 @@ namespace DocExtractor
 
                 var document = XDocument.Parse(inheritedDocumentation);
 
-                foreach (var inheritedElement in document.Elements()) {
+                foreach (var inheritedElement in document.Elements())
+                {
                     inheritedElement.SetAttributeValue("inheritedFrom", symbol.GetDocumentationCommentId());
                 }
 
@@ -317,7 +324,7 @@ namespace DocExtractor
 
                         var index = typeParameterSymbols
                             .Select((v, i) => new { Value = v, Index = i })
-                            .Where(p => p.Value.Name == typeParamName.Value)
+                            .Where(p => p.Value.Name == typeParamName?.Value)
                             .DefaultIfEmpty(new { Value = (ITypeParameterSymbol)null, Index = -1 })
                             .FirstOrDefault().Index;
 
@@ -461,7 +468,6 @@ namespace DocExtractor
             // We didn't find it quickly; instead, search all trees for the declaration.
             foreach (var tree in compilation.SyntaxTrees)
             {
-
                 var model = compilation.GetSemanticModel(tree);
 
                 foundSymbol = GetAllSymbols(model, tree.GetRoot()).FirstOrDefault(symbol =>
@@ -510,7 +516,7 @@ namespace DocExtractor
             }
         }
 
-        public static Type GetTypeByName(string name)
+        public static Type? GetTypeByName(string name)
         {
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().Reverse())
             {

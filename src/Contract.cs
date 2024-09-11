@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
+#nullable enable
+
 // This class was extracted and modified from the Omnisharp-Roslyn codebase.
 namespace DocExtractor
 {

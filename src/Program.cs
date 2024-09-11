@@ -98,7 +98,7 @@ namespace DocExtractor
             if (projectFiles.Count() == 0)
             {
                 Console.Error.WriteLine("Specify at least one project in \"projects\"");
-                System.Environment.Exit(1);
+                Environment.Exit(1);
             }
 
             if (configuration.MSBuildPath == null)
@@ -305,7 +305,6 @@ namespace DocExtractor
                     // If this symbol is a namespace, it won't have any documentation comments. We'll create one.
                     if (node is NamespaceDeclarationSyntax)
                     {
-                        // If this symbol is a namespace, it won't have any documentation comments. We'll create one.
                         if (configuration.NamespaceSummaries.TryGetValue(symbol.ToDisplayString(), out var summary))
                         {
                             doc = "<doc><summary>" + summary + "</summary></doc>";
@@ -384,7 +383,7 @@ namespace DocExtractor
             var emptyAttributeList = new SyntaxList<AttributeListSyntax>();
             var missingOpenBrace = SyntaxFactory.MissingToken(SyntaxKind.OpenBraceToken);
             var missingCloseBrace = SyntaxFactory.MissingToken(SyntaxKind.CloseBraceToken);
-            var emptyTokenList = new SyntaxTokenList();
+            //var emptyTokenList = new SyntaxTokenList();
 
             foreach (var symbol in output)
             {

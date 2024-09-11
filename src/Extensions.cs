@@ -3,6 +3,8 @@ using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 
+#nullable enable
+
 namespace DocExtractor
 {
     public static class Extensions {

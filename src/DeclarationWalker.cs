@@ -62,11 +62,7 @@ namespace DocExtractor
                         onSymbolHandled?.Invoke(node, memberSymbol);
                     }
                 }
-
-
             }
-
         }
     }
-
 }
