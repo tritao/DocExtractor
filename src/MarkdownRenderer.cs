@@ -7,6 +7,13 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace DocExtractor
 {
+    public class MarkdownOutput
+    {
+        public string Path { get; set; }
+        public string Content { get; set; }
+        public string Title { get; set; }
+    }
+
     public static class MarkdownRenderer
     {
         public static string GenerateMarkdownTableOfContentsForDocXML(IEnumerable<DocumentedSymbol> documentedSymbols, Configuration configuration)
@@ -100,13 +107,13 @@ namespace DocExtractor
             }
         }
 
-        public static Dictionary<string, string> GenerateMarkdownForDocXML(
+        public static List<MarkdownOutput> GenerateMarkdownForDocXML(
             IEnumerable<DocumentedSymbol> documentedSymbols,
             Configuration configuration)
         {
             var symbolDict = RendererUtility.CreateSymbolDictionary(documentedSymbols);
 
-            var output = new Dictionary<string, string>();
+            var outputs = new List<MarkdownOutput>();
 
             // var types = documentedSymbols.Where(s => s.DocumentationID.StartsWith("T:"));
 
@@ -389,10 +396,10 @@ namespace DocExtractor
                     stringBuilder.AppendLine();
                 }
 
-                output[path] = stringBuilder.ToString();
+                outputs.Add(new MarkdownOutput { Path = path, Content = stringBuilder.ToString(), Title = title });
             }
 
-            return output;
+            return outputs;
         }
 
         private static string EscapeMarkdown(string input, bool escapeCharacters = false)

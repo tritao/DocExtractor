@@ -206,20 +206,12 @@ namespace DocExtractor
                 case OutputFormat.Markdown:
                     {
                         IEnumerable<DocumentedSymbol> documentedSymbols = assemblySymbols.SelectMany(kv => kv.Value);
-                        var files = MarkdownRenderer.GenerateMarkdownForDocXML(documentedSymbols, configuration);
-
-                        foreach (var file in files)
-                        {
-                            var path = Path.Join(configuration.OutputFolder, file.Key);
-                            File.WriteAllText(path, file.Value);
-                            Console.WriteLine(path);
-                        }
+                        var outputs = MarkdownRenderer.GenerateMarkdownForDocXML(documentedSymbols, configuration);
 
                         var summary = MarkdownRenderer.GenerateMarkdownTableOfContentsForDocXML(documentedSymbols, configuration);
 
-                        var summaryPath = Path.Join(configuration.OutputFolder, "SUMMARY.md");
-                        File.WriteAllText(summaryPath, summary);
-                        Console.WriteLine(summaryPath);
+                        var summaryPath = "SUMMARY.md";
+                        outputs.Add(new MarkdownOutput { Path = summaryPath, Content = summary, Title = "Summary" });
 
                         var undocumentedSB = new System.Text.StringBuilder();
                         var symbolsWithUndocumentedElements = documentedSymbols.Where(s => s.ContainsUndocumentedElements);
@@ -258,10 +250,16 @@ namespace DocExtractor
                             undocumentedSB.AppendLine(string.Join(", ", symbol.UndocumentedElementNames));
                         }
 
-                        var undocumentedPath = Path.Join(configuration.OutputFolder, "UNDOCUMENTED.md");
+                        var undocumentedPath = "UNDOCUMENTED.md";
 
-                        File.WriteAllText(undocumentedPath, undocumentedSB.ToString());
-                        Console.WriteLine(undocumentedPath);
+                        outputs.Add(new MarkdownOutput { Path = undocumentedPath, Content = undocumentedSB.ToString(), Title = "Undocumented" });
+
+                        foreach (var output in outputs)
+                        {
+                            var path = Path.Join(configuration.OutputFolder, output.Path);
+                            File.WriteAllText(path, output.Content);
+                            Console.WriteLine(path);
+                        }
 
                         break;
                     }
