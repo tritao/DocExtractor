@@ -1,14 +1,19 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace DocExtractor
 {
     public static class MarkdownRenderer
     {
-        public static string GenerateMarkdownTableOfContentsForDocXML(IEnumerable<DocumentedSymbol> documentedSymbols, string pathPrefix, int indentLevel)
+        public static string GenerateMarkdownTableOfContentsForDocXML(IEnumerable<DocumentedSymbol> documentedSymbols, Configuration configuration)
         {
+            var pathPrefix = configuration.PathPrefix;
+            var indentLevel = configuration.SummaryIndentLevel;
+
             var symbolDict = RendererUtility.CreateSymbolDictionary(documentedSymbols);
 
             var namespaces = documentedSymbols.Where(d => d.Syntax is NamespaceDeclarationSyntax);
@@ -17,17 +22,11 @@ namespace DocExtractor
 
             string LineItem(int level, DocumentedSymbol symbol)
             {
-                var label = $"{symbol.DisplayName}{(symbol.Syntax is NamespaceDeclarationSyntax ? " Namespace" : string.Empty)}";
-
-                label = EscapeMarkdownCharacters(label);
-
-                var pathPrefixWithoutLeadingSlash = pathPrefix.TrimStart('/');
-
-                var path = $"{label}]({pathPrefixWithoutLeadingSlash}/{symbol.AnchorName}.md";
-
                 var indent = new string(' ', indentLevel);
-
-                return $"{indent}{new string(' ', level * 2)}* [{path})";
+                var levelIndent = new string(' ', level * 2);
+                var label = $"{symbol.DisplayName}{(symbol.Syntax is NamespaceDeclarationSyntax ? " Namespace" : string.Empty)}";
+                var link = GetMarkdownLink(label, symbol, configuration);
+                return $"{indent}{levelIndent}* {link}";
             }
 
             var linkStack = new Stack<(DocumentedSymbol Symbol, int Level)>();
@@ -71,30 +70,31 @@ namespace DocExtractor
             return label;
         }
 
-        static string GetMarkdownLink(DocumentedSymbol symbol, string pathPrefix, bool asCode = false, bool useFullDisplayName = false)
+        public static string GetMarkdownLink(DocumentedSymbol symbol, Configuration configuration, bool asCode = false, bool useFullDisplayName = false)
         {
             var displayName = useFullDisplayName ? symbol.FullDisplayName : symbol.DisplayName;
 
-            return GetMarkdownLink(displayName, symbol, pathPrefix, asCode);
+            return GetMarkdownLink(displayName, symbol, configuration, asCode);
         }
 
-        static string GetMarkdownLink(string label, DocumentedSymbol symbol, string pathPrefix, bool asCode = false)
+        public static string GetMarkdownLink(string label, DocumentedSymbol symbol, Configuration configuration, bool asCode = false)
         {
-            var displayName = label;
-
             if (symbol.AnchorName == null)
             {
-                return EscapeMarkdownCharacters(displayName);
+                return EscapeMarkdownCharacters(label);
             }
             else
             {
-                displayName = EscapeMarkdownCharacters((string)displayName);
-                var linkText = asCode ? $"`{displayName}`" : displayName;
-                return $"[{linkText}]({pathPrefix}/{symbol.AnchorName}.md)";
+                label = EscapeMarkdownCharacters(label);
+                var linkText = asCode ? $"`{label}`" : label;
+                var ext = configuration.StripExtensionFromLinks ? string.Empty : ".md";
+                return $"[{linkText}]({configuration.PathPrefix}/{symbol.AnchorName}{ext})";
             }
         }
 
-        public static Dictionary<string, string> GenerateMarkdownForDocXML(IEnumerable<DocumentedSymbol> documentedSymbols, string pathPrefix)
+        public static Dictionary<string, string> GenerateMarkdownForDocXML(
+            IEnumerable<DocumentedSymbol> documentedSymbols,
+            Configuration configuration)
         {
             var symbolDict = RendererUtility.CreateSymbolDictionary(documentedSymbols);
 
@@ -129,7 +129,7 @@ namespace DocExtractor
 
                     if (parent != null)
                     {
-                        stringBuilder.AppendLine($"{typeName} in {GetMarkdownLink(parent, pathPrefix)}");
+                        stringBuilder.AppendLine($"{typeName} in {GetMarkdownLink(parent, configuration)}");
                         stringBuilder.AppendLine();
                     }
                 }
@@ -139,7 +139,7 @@ namespace DocExtractor
                     stringBuilder.Append("Inherits from ");
                     if (symbolDict.TryGetValue(symbol.BaseTypeID, out var baseSymbol))
                     {
-                        stringBuilder.AppendLine($"{GetMarkdownLink(baseSymbol, pathPrefix, true)}");
+                        stringBuilder.AppendLine($"{GetMarkdownLink(baseSymbol, configuration, true)}");
                     }
                     else
                     {
@@ -216,7 +216,7 @@ namespace DocExtractor
 
                         if (parameterTypeSymbol != null)
                         {
-                            stringBuilder.Append(GetMarkdownLink(parameterTypeName, parameterTypeSymbol, pathPrefix));
+                            stringBuilder.Append(GetMarkdownLink(parameterTypeName, parameterTypeSymbol, configuration));
                         }
                         else if (parameterTypeName != null)
                         {
@@ -286,7 +286,7 @@ namespace DocExtractor
                         var exceptionSymbol = symbolDict[cref];
 
                         stringBuilder.Append("|");
-                        stringBuilder.Append(GetMarkdownLink(exceptionSymbol, pathPrefix));
+                        stringBuilder.Append(GetMarkdownLink(exceptionSymbol, configuration));
                         stringBuilder.Append("|");
                         stringBuilder.Append(CreateMarkdownFromXMLTags(symbolDict, exception).Replace("\n", " ").Trim());
                         stringBuilder.AppendLine("|");
@@ -313,12 +313,11 @@ namespace DocExtractor
 
                         foreach (var childSymbol in group.OrderBy(s => s.DocumentationID))
                         {
-                            var name = childSymbol.DisplayName;
-                            var link = $"{pathPrefix}/{childSymbol.AnchorName}.md";
                             var childDocs = XElement.Parse(childSymbol.DocumentationXml);
                             var childSummary = CreateMarkdownFromXMLTags(symbolDict, childDocs.Element("summary")).Replace("\n", " ").Trim();
 
-                            stringBuilder.AppendLine($"|[{EscapeMarkdown(name)}]({link})|{EscapeMarkdown(childSummary)}|");
+                            var link = GetMarkdownLink(childSymbol, configuration);
+                            stringBuilder.AppendLine($"|{link}|{EscapeMarkdown(childSummary)}|");
                         }
 
                         stringBuilder.AppendLine();
@@ -339,7 +338,7 @@ namespace DocExtractor
                         if (cref != null)
                         {
                             var seeAlsoSymbol = symbolDict[cref.Value.ToString()];
-                            stringBuilder.Append("* " + GetMarkdownLink(seeAlsoSymbol, pathPrefix, asCode: false, useFullDisplayName: true));
+                            stringBuilder.Append("* " + GetMarkdownLink(seeAlsoSymbol, configuration, asCode: false, useFullDisplayName: true));
 
                             if (seeAlsoSymbol.DocumentationID.StartsWith("!:") == false)
                             {

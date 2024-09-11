@@ -20,7 +20,7 @@ using System.Text.Json.Serialization;
 
 namespace DocExtractor
 {
-    enum OutputFormat
+    public enum OutputFormat
     {
         HTML, Markdown, XML
     }
@@ -206,7 +206,7 @@ namespace DocExtractor
                 case OutputFormat.Markdown:
                     {
                         IEnumerable<DocumentedSymbol> documentedSymbols = assemblySymbols.SelectMany(kv => kv.Value);
-                        var files = MarkdownRenderer.GenerateMarkdownForDocXML(documentedSymbols, configuration.PathPrefix);
+                        var files = MarkdownRenderer.GenerateMarkdownForDocXML(documentedSymbols, configuration);
 
                         foreach (var file in files)
                         {
@@ -215,7 +215,7 @@ namespace DocExtractor
                             Console.WriteLine(path);
                         }
 
-                        var summary = MarkdownRenderer.GenerateMarkdownTableOfContentsForDocXML(documentedSymbols, configuration.PathPrefix, configuration.SummaryIndentLevel);
+                        var summary = MarkdownRenderer.GenerateMarkdownTableOfContentsForDocXML(documentedSymbols, configuration);
 
                         var summaryPath = Path.Join(configuration.OutputFolder, "SUMMARY.md");
                         File.WriteAllText(summaryPath, summary);
@@ -243,12 +243,9 @@ namespace DocExtractor
                         undocumentedSB.AppendLine();
                         foreach (var symbol in symbolsWithUndocumentedElements)
                         {
-                            var label = MarkdownRenderer.EscapeMarkdownCharacters(symbol.FullDisplayName);
-
-                            undocumentedSB.Append($"* [{label}]({configuration.PathPrefix}/{symbol.AnchorName.ToLowerInvariant()}.md)");
-
+                            var link = MarkdownRenderer.GetMarkdownLink(symbol, configuration, useFullDisplayName: true);
+                            undocumentedSB.Append($"* {link}");
                             undocumentedSB.Append(": ");
-
                             undocumentedSB.AppendLine(string.Join(", ", symbol.UndocumentedElementNames));
                         }
 
