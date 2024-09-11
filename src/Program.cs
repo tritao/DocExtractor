@@ -179,23 +179,28 @@ namespace DocExtractor
 
                 case OutputFormat.XML:
                     {
-                        var xml = new XElement("doc",
-                            assemblySymbols.Select(kv =>
-                            new XElement("assembly",
-                                    new XElement("name",
-                                        kv.Key
-                                    ),
-                                    new XElement("members",
-                                        kv.Value.Select(symbol =>
-                                            XElement.Parse(symbol.DocumentationXml)
-                                        )))
+                        foreach (var pair in assemblySymbols)
+                        {
+                            var xml = new XElement("doc",
+                                assemblySymbols.Select(kv =>
+                                new XElement("assembly",
+                                        new XElement("name",
+                                            kv.Key
+                                        ),
+                                        new XElement("members",
+                                            kv.Value.Select(symbol =>
+                                                XElement.Parse(symbol.DocumentationXml)
+                                            )))
 
-                            )
-                        );
+                                )
+                            );
 
-                        // xml.Element("members").Add(symbols.Select(s => ));
+                            var symbols = pair.Value;
+                            var outPath = Path.Join(configuration.OutputFolder, pair.Key + ".xml");
 
-                        Console.WriteLine(xml.ToString());
+                            File.WriteAllText(outPath, xml.ToString());
+                            Console.WriteLine(outPath);
+                        }
                         break;
                     }
                 case OutputFormat.Markdown:
