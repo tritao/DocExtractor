@@ -10,6 +10,9 @@ namespace DocExtractor
         public List<string> ExcludeRegexes { get; set; } = new List<string>();
         public OutputFormat OutputFormat { get; set; } = OutputFormat.HTML;
         public string OutputFolder { get; set; } = null;
+        public bool OutputFrontMatter { get; set; } = false;
+        public bool OutputFrontMatterSlug { get; set; } = false;
+        public string SlugPrefix { get; set; }
         public string PathPrefix { get; set; } = ".";
         public bool StripExtensionFromLinks { get; set; }
         public Dictionary<string, string> NamespaceSummaries { get; set; } = new Dictionary<string, string>();

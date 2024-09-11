@@ -20,6 +20,15 @@ namespace DocExtractor
 
             var stringBuilder = new System.Text.StringBuilder();
 
+            if (configuration.OutputFrontMatter)
+            {
+                var slug = string.Join("/", configuration.SlugPrefix, "summary");
+                stringBuilder.AppendLine("---");
+                stringBuilder.AppendLine($"title: Summary");
+                stringBuilder.AppendLine($"slug: {slug}");
+                stringBuilder.AppendLine("---");
+            }
+
             string LineItem(int level, DocumentedSymbol symbol)
             {
                 var indent = new string(' ', indentLevel);
@@ -106,20 +115,33 @@ namespace DocExtractor
             {
                 var symbol = symbolDict[member.DocumentationID];
 
+
                 var path = symbol.AnchorName + ".md";
 
-                var stringBuilder = new System.Text.StringBuilder();
-
+                var title = string.Empty;
                 if (symbol.Syntax is NamespaceDeclarationSyntax)
                 {
-                    stringBuilder.AppendLine("# " + symbol.FullDisplayName + " Namespace");
+                    title = symbol.FullDisplayName + " Namespace";
                 }
                 else
                 {
-                    stringBuilder.AppendLine("# " + symbol.FullDisplayName);
+                    title =  symbol.FullDisplayName;
                 }
 
-                stringBuilder.AppendLine();
+                var stringBuilder = new System.Text.StringBuilder();
+
+                if (configuration.OutputFrontMatter)
+                {
+                    var slug = string.Join("/", configuration.SlugPrefix, symbol.AnchorName);
+                    stringBuilder.AppendLine("---");
+                    stringBuilder.AppendLine($"title: {title}");
+                    stringBuilder.AppendLine($"slug: {slug}");
+                    stringBuilder.AppendLine("---");
+                }
+                else
+                {
+                    stringBuilder.AppendLine("# " + title);
+                }
 
                 var typeName = HTMLRenderer.GetTypeName(symbol);
 

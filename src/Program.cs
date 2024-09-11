@@ -224,6 +224,15 @@ namespace DocExtractor
                         var undocumentedSB = new System.Text.StringBuilder();
                         var symbolsWithUndocumentedElements = documentedSymbols.Where(s => s.ContainsUndocumentedElements);
 
+                        if (configuration.OutputFrontMatter)
+                        {
+                            var slug = string.Join("/", configuration.SlugPrefix, "undocumented");
+                            undocumentedSB.AppendLine("---");
+                            undocumentedSB.AppendLine($"title: Undocumented");
+                            undocumentedSB.AppendLine($"slug: {slug}");
+                            undocumentedSB.AppendLine("---");
+                        }
+
                         undocumentedSB.AppendLine($"# Undocumented Items");
                         undocumentedSB.AppendLine();
 
