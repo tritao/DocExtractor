@@ -54,7 +54,6 @@ namespace DocExtractor
                         .Where(d => d.Syntax is not NamespaceDeclarationSyntax && d.ContainerID == Symbol.DocumentationID)
                         .OrderByDescending(d => d.DocumentationID)
 ;
-
                     foreach (var child in children)
                     {
                         linkStack.Push((child, Level + 1));
@@ -115,6 +114,11 @@ namespace DocExtractor
             {
                 var symbol = symbolDict[member.DocumentationID];
 
+                if (configuration.OutputFileForEnumerationMembers)
+                {
+                    if (symbol.Syntax.IsKind(SyntaxKind.EnumMemberDeclaration))
+                        continue;
+                }
 
                 var path = symbol.AnchorName + ".md";
 
