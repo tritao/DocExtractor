@@ -285,7 +285,9 @@ namespace DocExtractor
 
                             stringBuilder.Append(param.Attribute("name").Value);
 
-                            stringBuilder.AppendLine($" - {CreateMarkdownFromXMLTags(symbolDict, param).Replace("\n", " ").Trim()}");
+                            var summary = CreateMarkdownFromXMLTags(symbolDict, param).Replace("\n", " ").Trim();
+
+                            stringBuilder.AppendLine(summary.Length > 0 ? $" - {summary}" : "");
 
                             stringBuilder.AppendLine();
                         }
@@ -531,8 +533,18 @@ namespace DocExtractor
                         stringBuilder.AppendLine($"## {groupName}");
                         stringBuilder.AppendLine();
 
-                        stringBuilder.AppendLine("|Type|Name|Summary|");
-                        stringBuilder.AppendLine("|:---|:---|:---|");
+                        var shouldHaveType = groupName.ToUpperInvariant() != "CONSTRUCTORS";
+
+                        if(shouldHaveType)
+                        {
+                            stringBuilder.AppendLine("|Type|Name|Summary|");
+                            stringBuilder.AppendLine("|:---|:---|:---|");
+                        }
+                        else
+                        {
+                            stringBuilder.AppendLine("|Name|Summary|");
+                            stringBuilder.AppendLine("|:---|:---|");
+                        }
 
                         foreach (var childSymbol in group.OrderBy(s => s.DocumentationID))
                         {
@@ -548,10 +560,17 @@ namespace DocExtractor
 
                             var link = GetMarkdownLink(childSymbol, configuration, (configuration.OutputMemberFiles ? "./" : "#") + childSymbol.AnchorName);
 
-                            var typeString = GetTypeLinkString(childSymbol.Symbol, symbolDict);
+                            if(shouldHaveType)
+                            {
+                                var typeString = GetTypeLinkString(childSymbol.Symbol, symbolDict);
 
-                            stringBuilder.AppendLine($"|{typeString}" +
-                                $"|{link}|{EscapeMarkdown(childSummary)}|");
+                                stringBuilder.AppendLine($"|{typeString}" +
+                                    $"|{link}|{EscapeMarkdown(childSummary)}|");
+                            }
+                            else
+                            {
+                                stringBuilder.AppendLine($"|{link}|{EscapeMarkdown(childSummary)}|");
+                            }
                         }
 
                         stringBuilder.AppendLine();
@@ -598,7 +617,7 @@ namespace DocExtractor
                     stringBuilder.AppendLine();
                 }
 
-                if(configuration.OutputMemberFiles == false)
+                if(!configuration.OutputMemberFiles)
                 {
                     foreach (var group in children.OrderBy(group => group.Key))
                     {
@@ -616,6 +635,13 @@ namespace DocExtractor
                             var childDocs = XElement.Parse(childSymbol.DocumentationXml);
 
                             var localTypeName = GetTypeLinkString(childSymbol.Symbol, symbolDict);
+
+                            var shouldHaveType = groupName.ToUpperInvariant() != "CONSTRUCTORS";
+
+                            if(!shouldHaveType)
+                            {
+                                localTypeName = "";
+                            }
 
                             switch (groupName.ToUpperInvariant())
                             {
