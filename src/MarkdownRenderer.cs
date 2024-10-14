@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
@@ -58,8 +60,10 @@ namespace DocExtractor
                     stringBuilder.AppendLine(LineItem(Level, Symbol));
 
                     var children = documentedSymbols
-                        .Where(d => d.Syntax is not NamespaceDeclarationSyntax && d.ContainerID == Symbol.DocumentationID)
-                        .OrderByDescending(d => d.DocumentationID)
+                        .Where(d => d.Syntax is not NamespaceDeclarationSyntax &&
+                        d.ContainerID == Symbol.DocumentationID &&
+                        Program.IsValidSyntaxForLinking(d.Syntax, configuration, true))
+                        .OrderByDescending(d => d.DocumentationID);
 ;
                     foreach (var child in children)
                     {
@@ -85,26 +89,111 @@ namespace DocExtractor
             return label;
         }
 
-        public static string GetMarkdownLink(DocumentedSymbol symbol, Configuration configuration, bool asCode = false, bool useFullDisplayName = false)
+        public static string GetMarkdownLink(DocumentedSymbol symbol, Configuration configuration, string localLink = null, bool asCode = false, bool useFullDisplayName = false)
         {
             var displayName = useFullDisplayName ? symbol.FullDisplayName : symbol.DisplayName;
 
-            return GetMarkdownLink(displayName, symbol, configuration, asCode);
+            return GetMarkdownLink(displayName, symbol, configuration, localLink, asCode);
         }
 
-        public static string GetMarkdownLink(string label, DocumentedSymbol symbol, Configuration configuration, bool asCode = false)
+        public static string GetMarkdownLink(string label, DocumentedSymbol symbol, Configuration configuration, string localLink = null, bool asCode = false)
         {
-            if (symbol.AnchorName == null)
+            if (symbol.AnchorName == null || !Program.IsValidSyntaxForLinking(symbol.Syntax, configuration, false))
             {
                 return EscapeMarkdownCharacters(label);
             }
             else
             {
                 label = EscapeMarkdownCharacters(label);
+
                 var linkText = asCode ? $"`{label}`" : label;
+
+                if (localLink != null)
+                {
+                    return $"[{linkText}]({localLink})";
+                }
+
                 var ext = configuration.StripExtensionFromLinks ? string.Empty : ".md";
+
                 return $"[{linkText}]({configuration.PathPrefix}/{symbol.AnchorName}{ext})";
             }
+        }
+
+        internal static string GetSymbolTypeLink(string typeName, DefaultDictionary<string, DocumentedSymbol> symbolDict)
+        {
+            string link = null;
+
+            foreach (var pair in symbolDict)
+            {
+                if (pair.Key.Substring(2) == typeName)
+                {
+                    link = $"./{typeName.ToLowerInvariant()}";
+                }
+            }
+
+            if (link != null)
+            {
+                var index = link.IndexOf('<');
+
+                if (index >= 0)
+                {
+                    link = link.Substring(0, index);
+                }
+
+                index = link.IndexOf('(');
+
+                if (index >= 0)
+                {
+                    link = link.Substring(0, index);
+                }
+            }
+
+            return link;
+        }
+
+        internal static string GetTypeLinkString(string typeName, DefaultDictionary<string, DocumentedSymbol> symbolDict)
+        {
+            var localLink = GetSymbolTypeLink(typeName, symbolDict);
+
+            var text = EscapeMarkdownCharacters(Program.NormalizeTypeName(typeName));
+
+            return localLink != null ? $"[{text}]({localLink})" : text;
+        }
+
+        internal static string GetTypeLinkString(ISymbol symbol, DefaultDictionary<string, DocumentedSymbol> symbolDict)
+        {
+            return GetTypeLinkString(Program.GetSymbolType(symbol), symbolDict);
+        }
+
+        internal static string FormatMethodName(ISymbol self, ISymbol parent, DefaultDictionary<string, DocumentedSymbol> symbolDict,
+            Configuration configuration)
+        {
+            if (self is not IMethodSymbol methodSymbol)
+            {
+                return self.Name;
+            }
+
+            var outValue = self.Name;
+
+            if (outValue == ".ctor")
+            {
+                outValue = parent.Name;
+            }
+
+            if (methodSymbol.TypeArguments.Length > 0)
+            {
+                outValue += $"\\<{string.Join(", ", methodSymbol.TypeArguments.Select(x =>
+                {
+                    return $"{GetTypeLinkString(x.ToDisplayString(NullableFlowState.None), symbolDict)}";
+                }))}\\>";
+            }
+
+            outValue += $"({string.Join(", ", methodSymbol.Parameters.Select(x =>
+            {
+                return $"{GetTypeLinkString(x.Type.ToDisplayString(NullableFlowState.None), symbolDict)} {x.Name}";
+            }))})";
+
+            return outValue;
         }
 
         public static List<MarkdownOutput> GenerateMarkdownForDocXML(
@@ -121,18 +210,23 @@ namespace DocExtractor
             {
                 var symbol = symbolDict[member.DocumentationID];
 
-                if (configuration.OutputFileForEnumerationMembers)
+                if (!Program.IsValidSyntaxForLinking(symbol.Syntax, configuration, true) ||
+                    member.Symbol.DeclaredAccessibility == Accessibility.Private)
                 {
-                    if (symbol.Syntax.IsKind(SyntaxKind.EnumMemberDeclaration))
-                        continue;
+                    continue;
                 }
 
                 var path = symbol.AnchorName + ".md";
-
                 var title = string.Empty;
+                var xml = XElement.Parse(symbol.DocumentationXml);
+
                 if (symbol.Syntax is NamespaceDeclarationSyntax)
                 {
                     title = symbol.FullDisplayName + " Namespace";
+                }
+                else if(symbol.Syntax is MethodDeclarationSyntax)
+                {
+                    title = FormatMethodName(symbol.Symbol, symbol.Symbol.ContainingSymbol, symbolDict, configuration);
                 }
                 else
                 {
@@ -140,6 +234,112 @@ namespace DocExtractor
                 }
 
                 var stringBuilder = new System.Text.StringBuilder();
+
+                void HandleChild(XElement childDocs)
+                {
+                    var childSummary = CreateMarkdownFromXMLTags(symbolDict, childDocs.Element("summary")).Replace("\n", " ").Trim();
+
+                    stringBuilder.AppendLine(EscapeMarkdown(childSummary));
+
+                    // Add remarks, if present
+                    if (childDocs.Element("remarks") != null)
+                    {
+                        stringBuilder.AppendLine($"**Remarks**: {CreateMarkdownFromXMLTags(symbolDict, childDocs.Element("remarks"))}");
+                        stringBuilder.AppendLine();
+                    }
+
+                    var paramNodes = childDocs.Elements("param");
+
+                    if (paramNodes.Any())
+                    {
+                        stringBuilder.AppendLine("#### Parameters");
+                        stringBuilder.AppendLine();
+
+                        foreach (var param in paramNodes)
+                        {
+                            var parameterTypeID = param.Attribute("typeID")?.Value;
+                            var parameterTypeName = param.Attribute("typeName")?.Value;
+
+                            DocumentedSymbol parameterTypeSymbol = null;
+
+                            if (parameterTypeID != null)
+                            {
+                                symbolDict.TryGetValue(parameterTypeID, out parameterTypeSymbol);
+                            }
+
+                            if (parameterTypeSymbol != null)
+                            {
+                                stringBuilder.Append(GetMarkdownLink(Program.NormalizeTypeName(parameterTypeName), parameterTypeSymbol, configuration));
+                            }
+                            else if (parameterTypeName != null)
+                            {
+                                stringBuilder.Append(EscapeMarkdownCharacters(Program.NormalizeTypeName(parameterTypeName)));
+                            }
+                            else
+                            {
+                                // We don't have a type symbol or even a type name
+                                // for this parameter! Can't write a parameter type.
+                            }
+
+                            stringBuilder.Append(' ');
+
+                            stringBuilder.Append(param.Attribute("name").Value);
+
+                            stringBuilder.AppendLine($" - {CreateMarkdownFromXMLTags(symbolDict, param).Replace("\n", " ").Trim()}");
+
+                            stringBuilder.AppendLine();
+                        }
+
+                        stringBuilder.AppendLine();
+                    }
+
+                    var typeParamNodes = childDocs.Elements("typeparam");
+
+                    if (typeParamNodes.Any())
+                    {
+                        stringBuilder.AppendLine("#### Type Parameters");
+                        stringBuilder.AppendLine();
+
+                        foreach (var param in typeParamNodes)
+                        {
+                            stringBuilder.Append($"{param.Attribute("name").Value} {CreateMarkdownFromXMLTags(symbolDict, param).Replace("\n", " ").Trim()}");
+                        }
+
+                        stringBuilder.AppendLine();
+                    }
+
+                    // Generate a 'Returns' section only if we actually have content
+                    // for it
+                    var returns = childDocs.Element("returns");
+
+                    if (returns != null && returns.Nodes().Any())
+                    {
+                        stringBuilder.AppendLine("#### Returns");
+                        stringBuilder.AppendLine();
+                        stringBuilder.AppendLine(CreateMarkdownFromXMLTags(symbolDict, childDocs.Element("returns")));
+                        stringBuilder.AppendLine();
+                    }
+
+                    var exceptions = childDocs.Elements("except");
+
+                    if (exceptions.Any())
+                    {
+                        stringBuilder.AppendLine("#### Exceptions");
+                        stringBuilder.AppendLine();
+
+                        foreach (var exception in exceptions)
+                        {
+                            var cref = exception.Attribute("cref")?.Value;
+                            var exceptionSymbol = symbolDict[cref];
+
+                            stringBuilder.AppendLine($"{GetMarkdownLink(exceptionSymbol, configuration)} {CreateMarkdownFromXMLTags(symbolDict, exception).Replace("\n", " ").Trim()}");
+                        }
+
+                        stringBuilder.AppendLine();
+                    }
+
+                    stringBuilder.AppendLine();
+                }
 
                 if (configuration.OutputFrontMatter)
                 {
@@ -156,7 +356,7 @@ namespace DocExtractor
 
                 var typeName = HTMLRenderer.GetTypeName(symbol);
 
-                if (symbol.Syntax is not NamespaceDeclarationSyntax)
+                if (configuration.OutputMemberFiles && symbol.Syntax is not NamespaceDeclarationSyntax)
                 {
                     var parent = documentedSymbols.FirstOrDefault(s => symbol.ContainerID == s.DocumentationID);
 
@@ -169,16 +369,21 @@ namespace DocExtractor
 
                 if (symbol.BaseTypeID != null)
                 {
-                    stringBuilder.Append("Inherits from ");
+                    var symbolName = "";
+
                     if (symbolDict.TryGetValue(symbol.BaseTypeID, out var baseSymbol))
                     {
-                        stringBuilder.AppendLine($"{GetMarkdownLink(baseSymbol, configuration, true)}");
+                        symbolName = GetMarkdownLink(baseSymbol, configuration, asCode: true);
                     }
                     else
                     {
-                        stringBuilder.AppendLine($"`{symbol.BaseTypeID.Substring(2)}`");
+                        symbolName = symbol.BaseTypeID.Substring(2);
                     }
-                    stringBuilder.AppendLine();
+
+                    if(!symbolName.StartsWith("System."))
+                    {
+                        stringBuilder.AppendLine($"Inherits from {symbolName}");
+                    }
                 }
 
                 var isObsolete = symbol.Symbol.GetAttributes().Any(a => a.AttributeClass.GetDocumentationCommentId() == "T:System.ObsoleteAttribute");
@@ -189,15 +394,10 @@ namespace DocExtractor
                     stringBuilder.AppendLine();
                 }
 
-                var xml = XElement.Parse(symbol.DocumentationXml);
-
                 var summary = xml.Element("summary");
 
                 if (summary != null)
                 {
-                    stringBuilder.AppendLine("## Summary");
-                    stringBuilder.AppendLine();
-
                     string value = CreateMarkdownFromXMLTags(symbolDict, summary);
 
                     stringBuilder.AppendLine(value);
@@ -217,31 +417,25 @@ namespace DocExtractor
                 // Add remarks, if present
                 if (xml.Element("remarks") != null)
                 {
-                    stringBuilder.AppendLine("## Remarks");
-                    stringBuilder.AppendLine();
-
-                    stringBuilder.AppendLine(CreateMarkdownFromXMLTags(symbolDict, xml.Element("remarks")));
+                    stringBuilder.AppendLine($"**Remarks**: {CreateMarkdownFromXMLTags(symbolDict, xml.Element("remarks"))}");
 
                     stringBuilder.AppendLine();
                 }
 
                 var paramNodes = xml.Elements("param");
+
                 if (paramNodes.Any())
                 {
                     stringBuilder.AppendLine("## Parameters");
                     stringBuilder.AppendLine();
 
-                    stringBuilder.AppendLine("|Name|Description|");
-                    stringBuilder.AppendLine("|:---|:---|");
-
                     foreach (var param in paramNodes)
                     {
-                        stringBuilder.Append("|");
-
                         var parameterTypeID = param.Attribute("typeID")?.Value;
                         var parameterTypeName = param.Attribute("typeName")?.Value;
 
                         DocumentedSymbol parameterTypeSymbol = null;
+
                         if (parameterTypeID != null)
                         {
                             symbolDict.TryGetValue(parameterTypeID, out parameterTypeSymbol);
@@ -249,11 +443,11 @@ namespace DocExtractor
 
                         if (parameterTypeSymbol != null)
                         {
-                            stringBuilder.Append(GetMarkdownLink(parameterTypeName, parameterTypeSymbol, configuration));
+                            stringBuilder.Append(GetMarkdownLink(Program.NormalizeTypeName(parameterTypeName), parameterTypeSymbol, configuration));
                         }
                         else if (parameterTypeName != null)
                         {
-                            stringBuilder.Append($"`{parameterTypeName}`");
+                            stringBuilder.Append($"`{Program.NormalizeTypeName(parameterTypeName)}`");
                         }
                         else
                         {
@@ -261,33 +455,26 @@ namespace DocExtractor
                             // for this parameter! Can't write a parameter type.
                         }
 
-                        stringBuilder.Append(" ");
+                        stringBuilder.Append(' ');
 
-                        stringBuilder.Append(param.Attribute("name").Value);
-                        stringBuilder.Append("|");
-                        stringBuilder.Append(CreateMarkdownFromXMLTags(symbolDict, param).Replace("\n", " ").Trim());
-                        stringBuilder.AppendLine("|");
+                        stringBuilder.AppendLine(param.Attribute("name").Value);
+
+                        stringBuilder.AppendLine(CreateMarkdownFromXMLTags(symbolDict, param).Replace("\n", " ").Trim());
                     }
 
                     stringBuilder.AppendLine();
                 }
 
                 var typeParamNodes = xml.Elements("typeparam");
+
                 if (typeParamNodes.Any())
                 {
                     stringBuilder.AppendLine("## Type Parameters");
                     stringBuilder.AppendLine();
 
-                    stringBuilder.AppendLine("|Name|Description|");
-                    stringBuilder.AppendLine("|:---|:---|");
-
                     foreach (var param in typeParamNodes)
                     {
-                        stringBuilder.Append("|");
-                        stringBuilder.Append(param.Attribute("name").Value);
-                        stringBuilder.Append("|");
-                        stringBuilder.Append(CreateMarkdownFromXMLTags(symbolDict, param).Replace("\n", " ").Trim());
-                        stringBuilder.AppendLine("|");
+                        stringBuilder.Append($"{param.Attribute("name").Value} {CreateMarkdownFromXMLTags(symbolDict, param).Replace("\n", " ").Trim()}");
                     }
 
                     stringBuilder.AppendLine();
@@ -296,6 +483,7 @@ namespace DocExtractor
                 // Generate a 'Returns' section only if we actually have content
                 // for it
                 XElement returns = xml.Element("returns");
+
                 if (returns != null && returns.Nodes().Any())
                 {
                     stringBuilder.AppendLine("## Returns");
@@ -305,6 +493,7 @@ namespace DocExtractor
                 }
 
                 var exceptions = xml.Elements("except");
+
                 if (exceptions.Any())
                 {
                     stringBuilder.AppendLine("## Exceptions");
@@ -341,16 +530,28 @@ namespace DocExtractor
 
                         stringBuilder.AppendLine($"## {groupName}");
                         stringBuilder.AppendLine();
-                        stringBuilder.AppendLine($"|Name|Description|");
-                        stringBuilder.AppendLine($"|:---|:---|");
+
+                        stringBuilder.AppendLine("|Type|Name|Summary|");
+                        stringBuilder.AppendLine("|:---|:---|:---|");
 
                         foreach (var childSymbol in group.OrderBy(s => s.DocumentationID))
                         {
                             var childDocs = XElement.Parse(childSymbol.DocumentationXml);
-                            var childSummary = CreateMarkdownFromXMLTags(symbolDict, childDocs.Element("summary")).Replace("\n", " ").Trim();
+                            var childSummary = CreateMarkdownFromXMLTags(symbolDict, childDocs.Element("summary"))
+                                .Replace("\r\n", ". ")
+                                .Replace("\n", ". ").Trim();
 
-                            var link = GetMarkdownLink(childSymbol, configuration);
-                            stringBuilder.AppendLine($"|{link}|{EscapeMarkdown(childSummary)}|");
+                            if(childSummary.StartsWith(". "))
+                            {
+                                childSummary = childSummary.Substring(1);
+                            }
+
+                            var link = GetMarkdownLink(childSymbol, configuration, $"#{childSymbol.AnchorName}");
+
+                            var typeString = GetTypeLinkString(childSymbol.Symbol, symbolDict);
+
+                            stringBuilder.AppendLine($"|{typeString}" +
+                                $"|{link}|{EscapeMarkdown(childSummary)}|");
                         }
 
                         stringBuilder.AppendLine();
@@ -358,6 +559,7 @@ namespace DocExtractor
                 }
 
                 var seeAlsos = xml.Elements("seealso");
+
                 if (seeAlsos.Any())
                 {
                     stringBuilder.AppendLine("## See Also");
@@ -394,6 +596,60 @@ namespace DocExtractor
                     }
 
                     stringBuilder.AppendLine();
+                }
+
+                if(configuration.OutputMemberFiles == false)
+                {
+                    foreach (var group in children.OrderBy(group => group.Key))
+                    {
+                        string groupName = group.Key;
+
+                        stringBuilder.AppendLine($"## <a id='{groupName}-detail' /> {groupName}");
+                        stringBuilder.AppendLine();
+
+                        var groupChildren = group.OrderBy(s => s.DocumentationID).ToArray();
+
+                        for (var i = 0; i < groupChildren.Length; i++)
+                        {
+                            var childSymbol = groupChildren[i];
+
+                            var childDocs = XElement.Parse(childSymbol.DocumentationXml);
+
+                            var localTypeName = GetTypeLinkString(childSymbol.Symbol, symbolDict);
+
+                            switch (groupName.ToUpperInvariant())
+                            {
+                                case "CONSTRUCTORS":
+                                case "METHODS":
+
+                                    stringBuilder.AppendLine($"### <a id='{childSymbol.AnchorName}'/>{localTypeName} " +
+                                        FormatMethodName(childSymbol.Symbol, symbol.Symbol, symbolDict, configuration)
+                                    );
+
+                                    break;
+
+                                default:
+
+                                    stringBuilder.AppendLine($"### <a id='{childSymbol.AnchorName}'/>{localTypeName} " +
+                                        EscapeMarkdownCharacters(childSymbol.Symbol.Name));
+
+                                    break;
+                            }
+
+                            HandleChild(childDocs);
+
+                            if(i + 1 < groupChildren.Length)
+                            {
+                                stringBuilder.AppendLine();
+
+                                stringBuilder.AppendLine("---");
+
+                                stringBuilder.AppendLine();
+                            }
+                        }
+
+                        stringBuilder.AppendLine();
+                    }
                 }
 
                 outputs.Add(new MarkdownOutput { Path = path, Content = stringBuilder.ToString(), Title = title });

@@ -14,6 +14,7 @@ namespace DocExtractor
         public bool OutputFileForEnumerationMembers { get; set; } = true;
         public bool OutputFrontMatter { get; set; } = false;
         public bool OutputFrontMatterSlug { get; set; } = false;
+        public bool OutputMemberFiles { get; set; } = true;
         public string SlugPrefix { get; set; }
         public string PathPrefix { get; set; } = ".";
         public bool StripExtensionFromLinks { get; set; }
