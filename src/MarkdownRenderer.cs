@@ -546,7 +546,7 @@ namespace DocExtractor
                                 childSummary = childSummary.Substring(1);
                             }
 
-                            var link = GetMarkdownLink(childSymbol, configuration, $"#{childSymbol.AnchorName}");
+                            var link = GetMarkdownLink(childSymbol, configuration, (configuration.OutputMemberFiles ? "./" : "#") + childSymbol.AnchorName);
 
                             var typeString = GetTypeLinkString(childSymbol.Symbol, symbolDict);
 
