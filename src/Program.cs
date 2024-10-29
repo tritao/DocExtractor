@@ -773,6 +773,75 @@ namespace DocExtractor
 
             return workspace.OpenProjectAsync(path).Result;
         }
+
+        public static bool IsValidSyntaxForLinking(SyntaxNode node, Configuration configuration, bool isNavigation)
+        {
+            if(configuration.OutputMemberFiles)
+            {
+                return true;
+            }
+
+            if(node is EnumDeclarationSyntax && !configuration.OutputFileForEnumerationMembers)
+            {
+                return false;
+            }
+
+            if(!isNavigation && (node is FieldDeclarationSyntax ||
+                node is PropertyDeclarationSyntax ||
+                node is MethodDeclarationSyntax ||
+                node is ConstructorDeclarationSyntax))
+            {
+                return true;
+            }
+
+            return node is ClassDeclarationSyntax ||
+                node is StructDeclarationSyntax ||
+                node is EnumDeclarationSyntax;
+        }
+
+        public static string GetSymbolType(ISymbol symbol)
+        {
+            var baseType = "";
+
+            switch (symbol)
+            {
+                case IFieldSymbol f:
+
+                    baseType = f.Type.ToDisplayString(NullableFlowState.None);
+
+                    break;
+
+                case IPropertySymbol p:
+
+                    baseType = p.Type.ToDisplayString(NullableFlowState.None);
+
+                    break;
+
+                case IMethodSymbol m:
+
+                    baseType = m.ReturnType.ToDisplayString(NullableFlowState.None);
+
+                    break;
+
+                case IParameterSymbol p:
+
+                    baseType = p.Type.ToDisplayString(NullableFlowState.None);
+
+                    break;
+            }
+
+            return baseType;
+        }
+
+        internal static string NormalizeTypeName(string typeName)
+        {
+            if (typeName.Contains('.'))
+            {
+                typeName = typeName.Split('.').Last();
+            }
+
+            return typeName;
+        }
     }
 
     public static class DistinctExtension
